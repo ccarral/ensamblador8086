@@ -53,9 +53,10 @@ assemblerdirective
    | equ
    | db
    | dw
-   | cseg
+   | codeseg
+   | dataseg
+   | stackseg
    | dd
-   | dseg
    | title
    | include_
    | rw
@@ -76,20 +77,28 @@ rs
    : name? RS expression
    ;
 
-cseg
-   : CSEG expression?
+codeseg
+   : CODE segment 
    ;
 
-dseg
-   : DSEG expression?
+dataseg
+   : DATA segment 
+   ;
+
+stackseg
+   : STACK segment 
+   ;
+
+segment
+   : SEGMENT
    ;
 
 dw
-   : DW expressionlist
+   : DW ( expressionlist | dupdecl )
    ;
 
 db
-   : DB expressionlist
+   : DB ( expressionlist | dupdecl )
    ;
 
 dd
@@ -98,6 +107,10 @@ dd
 
 equ
    : name EQU expression
+   ;
+
+dupdecl
+   : number DUP '(' ( number | STRING ) ')'
    ;
 
 if_
@@ -232,6 +245,21 @@ CSEG
    : C S E G
    ;
 
+SEGMENT
+   : S E G M E N T
+   ;
+
+STACK
+   : '.' S T A C K
+   ;
+
+CODE
+   : '.' C O D E
+   ;
+
+DATA
+   : '.' D A T A
+   ;
 
 INCLUDE
    : I N C L U D E
@@ -265,6 +293,10 @@ IF
 
 EQU
    : E Q U
+   ;
+
+DUP
+   : D U P
    ;
 
 
