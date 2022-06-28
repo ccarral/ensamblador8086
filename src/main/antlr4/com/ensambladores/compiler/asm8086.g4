@@ -110,7 +110,7 @@ equ
    ;
 
 dupdecl
-   : number DUP '(' ( number | STRING ) ')'
+   : number DUP '(' ( number | CHAR ) ')'
    ;
 
 if_
@@ -387,8 +387,10 @@ NUMBER
    : [0-9a-fA-F] + ('H' | 'h')?
    ;
 STRING
-   : '\u0027' ~'\u0027'* '\u0027'
-   | '"' ~'"'* '"'
+   : '"' ~'"'* '"'
+   ;
+CHAR:
+   '\u0027'.?'\u0027'
    ;
 EOL
    : [\r\n] +
