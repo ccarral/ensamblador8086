@@ -47,7 +47,6 @@ lbl
 
 assemblerdirective
    : org
-   | end
    | if_
    | endif_
    | equ
@@ -56,6 +55,7 @@ assemblerdirective
    | codeseg
    | dataseg
    | stackseg
+   | ends
    | dd
    | title
    | include_
@@ -137,8 +137,8 @@ endif_
    : ENDIF
    ;
 
-end
-   : END
+ends
+   : ENDS
    ;
 
 org
@@ -259,6 +259,10 @@ CODE
 
 DATA
    : '.' D A T A
+   ;
+
+ENDS
+   : E N D S
    ;
 
 INCLUDE
@@ -384,13 +388,13 @@ NAME
    : [.a-zA-Z] [a-zA-Z0-9."_]*
    ;
 NUMBER
-   : [0-9a-fA-F] + ('H' | 'h')?
+   : [0-9a-fA-F]+ ('H' | 'h')?
    ;
 STRING
    : '"' ~'"'* '"'
    ;
 CHAR:
-   '\u0027'.?'\u0027'
+   '\u0027' .? '\u0027'
    ;
 EOL
    : [\r\n] +
