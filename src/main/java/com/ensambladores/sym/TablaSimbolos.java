@@ -24,10 +24,10 @@ public class TablaSimbolos {
         return this.contador++;
     }
 
-    public void añadeSimbolo(String etiqueta) {
+    public void añadeSimbolo(String etiqueta, int dir) {
         Simbolo simb = new Simbolo();
         simb.setEtiqueta(etiqueta.toLowerCase());
-        simb.setDireccion(contador);
+        simb.setDireccion(dir);
         simb.setTipo(TipoSimbolo.WORD);
         tablaInner.add(simb);
     }
@@ -48,10 +48,10 @@ public class TablaSimbolos {
     public String toString() {
         String out = null;
         out = String.format("-------------------------\n");
-        out = out.concat(String.format("%10s %5s %5s\n", "Simb", "Tipo", "Dir"));
+        out = out.concat(String.format("%10s %4s %10s\n", "simb", "tipo", "dir"));
         out = out.concat("-------------------------\n");
         for (Simbolo s : this.getTablaInner()) {
-            out = out.concat(String.format("%10s %5s %5s\n", s.getEtiqueta(), s.getTipo(), s.getDireccion()));
+            out = out.concat(String.format("%10s %4s 0x%08X\n", s.getEtiqueta(), s.getTipo(), s.getDireccion()));
         }
         out = out.concat("-------------------------\n");
         return out;
