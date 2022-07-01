@@ -1,6 +1,7 @@
 package com.ensambladores;
 
 import java.io.PrintStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.HexFormat;
 import java.util.List;
@@ -9,6 +10,8 @@ import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.misc.Interval;
 
 import com.google.common.base.Strings;
+import com.google.common.io.ByteArrayDataInput;
+import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.primitives.UnsignedBytes;
 import com.ensambladores.compiler.asm8086BaseListener;
 import com.ensambladores.compiler.asm8086Parser.DbContext;
@@ -21,6 +24,7 @@ import com.ensambladores.compiler.asm8086Parser.LabelContext;
 import com.ensambladores.compiler.asm8086Parser.LineContext;
 import com.ensambladores.compiler.asm8086Parser.NameContext;
 import com.ensambladores.compiler.asm8086Parser.NumberContext;
+import com.ensambladores.compiler.asm8086Parser.OpcodeContext;
 import com.ensambladores.error.Asm8086ErrorListener;
 import com.ensambladores.instrucciones.Codificador;
 import com.ensambladores.instrucciones.OpCode;
@@ -31,26 +35,25 @@ import com.ensambladores.sym.TipoSimbolo;
 
 public class Analizador8086 extends asm8086BaseListener {
     private TablaSimbolos tablaSimbolos = new TablaSimbolos();
-    private boolean symbolFlag = false;
-    private boolean errorFlag = false;
     private Asm8086ErrorListener errorListener;
     private PrintStream outFile;
     private int contadorPrograma = 0x0;
     private ANTLRInputStream input;
     private String[] lineas;
-    private ArrayDeque<String> currentCodedInstructionList = new ArrayDeque<>();
     private ArrayDeque<OpCode> opCodeReturnStack = new ArrayDeque<>();
     private ArrayDeque<Integer> opCodePropsReturnStack = new ArrayDeque<>();
-    private ArrayDeque<String> addressBytesReturnStack = new ArrayDeque<>();
     private int longestLineLength = -99999;
+    // No se espera leer o escribir más de 16 bytes por vez
+    private byte[] outByteBuf = new byte[200];
+    private int bufWriteIdx = 0;
 
     public void setLineas(String[] lineas) {
-        for(int i = 0; i< lineas.length; i++){
+        for (int i = 0; i < lineas.length; i++) {
             // Elimina caracteres extraños
-            String linea = lineas[i].replaceAll("[\\p{Cf}]", "");
-            linea = linea.trim();
+            String linea = lineas[i].trim().replaceAll("\t", "");
+            ;
             lineas[i] = linea;
-            if(linea.length() > this.longestLineLength){
+            if (linea.length() > this.longestLineLength) {
                 this.longestLineLength = linea.length();
             }
         }
@@ -93,56 +96,26 @@ public class Analizador8086 extends asm8086BaseListener {
         super.exitLine(ctx);
 
         String codedInst = "";
-        String errMsg = null;
 
         int linea = ctx.start.getLine();
-        int col = ctx.start.getCharPositionInLine();
-        OpCode opCode;
-        InstructionContext instructionContext = ctx.instruction();
-        if (instructionContext != null && (opCode = this.opCodeReturnStack.pop()) != OpCode.UNKNOWN) {
-            int props = this.opCodePropsReturnStack.pop();
-            int expectedProps = opCode.getProps();
 
-            codedInst = Codificador.codifica(opCode);
-
-            for (String bits : this.currentCodedInstructionList) {
-                codedInst = codedInst.concat(bits);
-            }
-
-            if ((expectedProps & OpCodeProperties.NO_ARGS) != 0 // La instruccion no esperaba argumentos
-                    && (props & OpCodeProperties.ARGS) != 0 // Y recibio argumentos
-            ) {
-                errMsg = String.format("la instruccion %s no acepta argumentos", opCode);
-                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
-            }
-
-            if ((expectedProps & OpCodeProperties.ARG_IS_LABEL) != 0
-                    && (props & OpCodeProperties.ARG_IS_LABEL) == 0) {
-                errMsg = String.format("la instruccion %s esperaba una etiqueta como argumento", opCode);
-                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
-                this.errorFlag = true;
-            } else if ((expectedProps & OpCodeProperties.ARG_IS_LABEL) == 0 // El argumento no puede ser etq
-                    && (props & OpCodeProperties.ARG_IS_LABEL) != 0 // pero lo es
-            ) {
-                errMsg = String.format("la instruccion %s no recibe una etiqueta como argumento", opCode);
-                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
-                this.errorFlag = true;
-            } else if ((props & OpCodeProperties.ARG_IS_LABEL) != 0) {
-                codedInst = codedInst.concat(this.addressBytesReturnStack.pop());
-            }
-
-            this.contadorPrograma += codedInst.length() / 8;
-            this.currentCodedInstructionList.clear();
-            this.opCodePropsReturnStack.clear();
-            this.addressBytesReturnStack.clear();
-
-        }
-        if(this.errorListener.isPoisoned()){
+        if (this.errorListener.isPoisoned()) {
             codedInst = "ERR";
             this.errorListener.setPoisoned(false);
+            this.clearOutBuf();
+        } else {
+            this.contadorPrograma += this.bufWriteIdx;
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < this.bufWriteIdx; i++) {
+                sb.append(String.format("%02X", this.outByteBuf[i]));
+            }
+            codedInst = sb.toString();
+            this.clearOutBuf();
         }
-        
-        outFile.printf("%s %s\n", Strings.padEnd(lineas[linea - 1], this.longestLineLength,' '), Strings.padStart(codedInst, 50, ' '));
+        // System.err.println(lineas[linea - 1]);
+
+        outFile.printf("%s %s\n", Strings.padEnd(lineas[linea - 1], this.longestLineLength, ' '),
+                Strings.padStart(codedInst, 8, ' '));
     }
 
     @Override
@@ -157,35 +130,59 @@ public class Analizador8086 extends asm8086BaseListener {
             this.errorListener.syntaxError(null, null, linea, col, msg, null);
         } else {
             tablaSimbolos.añadeSimbolo(etiqueta, this.contadorPrograma);
-            this.symbolFlag = true;
         }
     }
 
     @Override
     public void exitInstruction(InstructionContext ctx) {
         super.exitInstruction(ctx);
+        int props = 0;
+        String errMsg = null;
+        int linea = ctx.start.getLine();
+        int col = ctx.start.getCharPositionInLine();
 
-        int flags = 0;
-        String opcString = ctx.start.getText();
-        OpCode opc = fromOpcodeStr(opcString);
-        this.opCodeReturnStack.push(opc);
         ExpressionlistContext exprListCtx = ctx.expressionlist();
-        if (exprListCtx != null) {
-            flags |= OpCodeProperties.ARGS;
-            if (exprListCtx.children.size() == 1) {
-                String cadena = exprListCtx.getText();
-                Simbolo s = this.tablaSimbolos.getSimb(cadena);
-                if (s != null) {
-                    flags |= OpCodeProperties.ARG_IS_LABEL;
-                    String jumpAddr = Codificador.codificaSalto(this.contadorPrograma, s.getDireccion());
-                    this.addressBytesReturnStack
-                            .push(jumpAddr);
-                }
-            } else if (exprListCtx.children.size() == 2) {
-                flags |= OpCodeProperties.ARGS_2;
+        if (exprListCtx == null) {
+            props |= OpCodeProperties.NO_ARGS;
+        } else {
+            props = this.opCodePropsReturnStack.pop();
+        }
+
+        OpCode opCode = this.opCodeReturnStack.pop();
+
+        // Valida la lógica de la instrucción
+        if (opCode != OpCode.UNKNOWN) {
+            int expectedProps = opCode.getProps();
+
+            if ((expectedProps & OpCodeProperties.NO_ARGS) != 0 // La instruccion no esperaba argumentos
+                    && (props & OpCodeProperties.ARGS) != 0 // Y recibio argumentos
+            ) {
+                errMsg = String.format("la instruccion %s no acepta argumentos", opCode);
+                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
+            }
+
+            if ((expectedProps & OpCodeProperties.ARG_IS_LABEL) != 0
+                    && (props & OpCodeProperties.ARG_IS_LABEL) == 0) {
+                errMsg = String.format("la instruccion %s esperaba una etiqueta como argumento", opCode);
+                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
+            } else if ((expectedProps & OpCodeProperties.ARG_IS_LABEL) == 0 // El argumento no puede ser etq
+                    && (props & OpCodeProperties.ARG_IS_LABEL) != 0 // pero lo es
+            ) {
+                errMsg = String.format("la instruccion %s no recibe una etiqueta como argumento", opCode);
+                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
             }
         }
-        opCodePropsReturnStack.push(flags);
+    }
+
+    @Override
+    public void exitOpcode(OpcodeContext ctx) {
+        super.exitOpcode(ctx);
+        // Añadir al return stack
+        String opcString = ctx.OPCODE().getText();
+        OpCode opc = fromOpcodeStr(opcString);
+        this.opCodeReturnStack.push(opc);
+        byte[] opcBytes = Codificador.codifica(opc);
+        this.writeAtEndOfBuffer(opcBytes);
     }
 
     public void procesaDefineVar(DupdeclContext dupDeclCtx, ExpressionlistContext exprListCtx,
@@ -243,9 +240,34 @@ public class Analizador8086 extends asm8086BaseListener {
                     // Añadir al PC
                     this.incrementaContadorPrograma(repetido * offset);
                 }
+            } else {
+                // Asumimos que se usó un caracter
+                this.incrementaContadorPrograma(repetido * offset);
             }
         }
+    }
 
+    @Override
+    public void exitExpressionlist(ExpressionlistContext exprListCtx) {
+        super.exitExpressionlist(exprListCtx);
+        int props = 0;
+        props |= OpCodeProperties.ARGS;
+        if (exprListCtx.children.size() == 1) {
+            String cadena = exprListCtx.getText();
+            Simbolo sim = this.tablaSimbolos.getSimb(cadena);
+            if (sim != null) {
+                props |= OpCodeProperties.ARG_IS_LABEL;
+                byte[] jumpAddr = Codificador.codificaSalto(this.contadorPrograma, sim.getDireccion());
+                this.writeAtEndOfBuffer(jumpAddr);
+                OpCode opc;
+                if ((opc = this.opCodeReturnStack.peekFirst()) != null && Codificador.noSoportado(opc)) {
+                    this.clearOutBuf();
+                }
+            }
+        } else if (exprListCtx.children.size() == 2) {
+            props |= OpCodeProperties.ARGS_2;
+        }
+        this.opCodePropsReturnStack.push(props);
     }
 
     @Override
@@ -437,5 +459,27 @@ public class Analizador8086 extends asm8086BaseListener {
             default:
                 return OpCode.UNKNOWN;
         }
+    }
+
+    public void writeAtEndOfBuffer(byte[] bytes) {
+        for (int i = 0; i < bytes.length; i++) {
+            this.outByteBuf[this.bufWriteIdx + i] = bytes[i];
+        }
+        this.bufWriteIdx += bytes.length;
+    }
+
+    public void printOutBuf() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[ ");
+        for (int i = 0; i < this.bufWriteIdx; i++) {
+            byte b = this.outByteBuf[i];
+            sb.append(String.format("0x%02X ", b));
+        }
+        sb.append("]");
+        System.out.printf("%s\n", sb.toString());
+    }
+
+    public void clearOutBuf() {
+        this.bufWriteIdx = 0;
     }
 }
