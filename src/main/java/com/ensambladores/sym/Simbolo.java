@@ -3,13 +3,13 @@ package com.ensambladores.sym;
 public class Simbolo {
     private TipoSimbolo tipo;
     private String etiqueta;
-    private long direccion;
+    private int direccion;
 
-    public long getDireccion() {
+    public int getDireccion() {
         return direccion;
     }
 
-    public void setDireccion(long direccion) {
+    public void setDireccion(int direccion) {
         this.direccion = direccion;
     }
 

@@ -8,11 +8,13 @@ import java.util.List;
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.misc.Interval;
 
+import com.google.common.base.Strings;
 import com.google.common.primitives.UnsignedBytes;
 import com.ensambladores.compiler.asm8086BaseListener;
 import com.ensambladores.compiler.asm8086Parser.DbContext;
 import com.ensambladores.compiler.asm8086Parser.DupdeclContext;
 import com.ensambladores.compiler.asm8086Parser.DwContext;
+import com.ensambladores.compiler.asm8086Parser.EquContext;
 import com.ensambladores.compiler.asm8086Parser.ExpressionlistContext;
 import com.ensambladores.compiler.asm8086Parser.InstructionContext;
 import com.ensambladores.compiler.asm8086Parser.LabelContext;
@@ -23,12 +25,14 @@ import com.ensambladores.error.Asm8086ErrorListener;
 import com.ensambladores.instrucciones.Codificador;
 import com.ensambladores.instrucciones.OpCode;
 import com.ensambladores.instrucciones.OpCodeProperties;
+import com.ensambladores.sym.Simbolo;
 import com.ensambladores.sym.TablaSimbolos;
 import com.ensambladores.sym.TipoSimbolo;
 
 public class Analizador8086 extends asm8086BaseListener {
     private TablaSimbolos tablaSimbolos = new TablaSimbolos();
     private boolean symbolFlag = false;
+    private boolean errorFlag = false;
     private Asm8086ErrorListener errorListener;
     private PrintStream outFile;
     private int contadorPrograma = 0x0;
@@ -37,8 +41,19 @@ public class Analizador8086 extends asm8086BaseListener {
     private ArrayDeque<String> currentCodedInstructionList = new ArrayDeque<>();
     private ArrayDeque<OpCode> opCodeReturnStack = new ArrayDeque<>();
     private ArrayDeque<Integer> opCodePropsReturnStack = new ArrayDeque<>();
+    private ArrayDeque<String> addressBytesReturnStack = new ArrayDeque<>();
+    private int longestLineLength = -99999;
 
     public void setLineas(String[] lineas) {
+        for(int i = 0; i< lineas.length; i++){
+            // Elimina caracteres extraños
+            String linea = lineas[i].replaceAll("[\\p{Cf}]", "");
+            linea = linea.trim();
+            lineas[i] = linea;
+            if(linea.length() > this.longestLineLength){
+                this.longestLineLength = linea.length();
+            }
+        }
         this.lineas = lineas;
     }
 
@@ -82,12 +97,17 @@ public class Analizador8086 extends asm8086BaseListener {
 
         int linea = ctx.start.getLine();
         int col = ctx.start.getCharPositionInLine();
-
+        OpCode opCode;
         InstructionContext instructionContext = ctx.instruction();
-        if (instructionContext != null) {
-            OpCode opCode = this.opCodeReturnStack.pop();
+        if (instructionContext != null && (opCode = this.opCodeReturnStack.pop()) != OpCode.UNKNOWN) {
             int props = this.opCodePropsReturnStack.pop();
             int expectedProps = opCode.getProps();
+
+            codedInst = Codificador.codifica(opCode);
+
+            for (String bits : this.currentCodedInstructionList) {
+                codedInst = codedInst.concat(bits);
+            }
 
             if ((expectedProps & OpCodeProperties.NO_ARGS) != 0 // La instruccion no esperaba argumentos
                     && (props & OpCodeProperties.ARGS) != 0 // Y recibio argumentos
@@ -96,14 +116,33 @@ public class Analizador8086 extends asm8086BaseListener {
                 this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
             }
 
-            codedInst = Codificador.codifica(opCode);
-            for (String bits : this.currentCodedInstructionList) {
-                codedInst = codedInst.concat(bits);
+            if ((expectedProps & OpCodeProperties.ARG_IS_LABEL) != 0
+                    && (props & OpCodeProperties.ARG_IS_LABEL) == 0) {
+                errMsg = String.format("la instruccion %s esperaba una etiqueta como argumento", opCode);
+                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
+                this.errorFlag = true;
+            } else if ((expectedProps & OpCodeProperties.ARG_IS_LABEL) == 0 // El argumento no puede ser etq
+                    && (props & OpCodeProperties.ARG_IS_LABEL) != 0 // pero lo es
+            ) {
+                errMsg = String.format("la instruccion %s no recibe una etiqueta como argumento", opCode);
+                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
+                this.errorFlag = true;
+            } else if ((props & OpCodeProperties.ARG_IS_LABEL) != 0) {
+                codedInst = codedInst.concat(this.addressBytesReturnStack.pop());
             }
+
+            this.contadorPrograma += codedInst.length() / 8;
             this.currentCodedInstructionList.clear();
+            this.opCodePropsReturnStack.clear();
+            this.addressBytesReturnStack.clear();
 
         }
-        outFile.printf("%s %s\n", lineas[linea - 1], codedInst);
+        if(this.errorListener.isPoisoned()){
+            codedInst = "ERR";
+            this.errorListener.setPoisoned(false);
+        }
+        
+        outFile.printf("%s %s\n", Strings.padEnd(lineas[linea - 1], this.longestLineLength,' '), Strings.padStart(codedInst, 50, ' '));
     }
 
     @Override
@@ -130,8 +169,21 @@ public class Analizador8086 extends asm8086BaseListener {
         String opcString = ctx.start.getText();
         OpCode opc = fromOpcodeStr(opcString);
         this.opCodeReturnStack.push(opc);
-        if (ctx.expressionlist() != null) {
+        ExpressionlistContext exprListCtx = ctx.expressionlist();
+        if (exprListCtx != null) {
             flags |= OpCodeProperties.ARGS;
+            if (exprListCtx.children.size() == 1) {
+                String cadena = exprListCtx.getText();
+                Simbolo s = this.tablaSimbolos.getSimb(cadena);
+                if (s != null) {
+                    flags |= OpCodeProperties.ARG_IS_LABEL;
+                    String jumpAddr = Codificador.codificaSalto(this.contadorPrograma, s.getDireccion());
+                    this.addressBytesReturnStack
+                            .push(jumpAddr);
+                }
+            } else if (exprListCtx.children.size() == 2) {
+                flags |= OpCodeProperties.ARGS_2;
+            }
         }
         opCodePropsReturnStack.push(flags);
     }
@@ -313,6 +365,23 @@ public class Analizador8086 extends asm8086BaseListener {
 
     }
 
+    @Override
+    public void exitEqu(EquContext ctx) {
+        super.exitEqu(ctx);
+        String valor = ctx.expression().getText();
+        String etq = ctx.name().getText();
+
+        int linea = ctx.getStart().getLine();
+        int col = ctx.getStart().getCharPositionInLine();
+        if (testOverflow(valor, TipoSimbolo.WORD)) {
+            String msg = String.format("no es posible definir un %s con el número %s", TipoSimbolo.WORD, valor);
+            this.errorListener.syntaxError(null, null, linea, col, msg, null);
+        } else {
+            this.tablaSimbolos.añadeSimbolo(etq, this.contadorPrograma);
+            this.contadorPrograma += 2;
+        }
+    }
+
     public static boolean isCadena(String s) {
         boolean izq = s.charAt(0) == '"';
         boolean der = s.charAt(s.length() - 1) == '"';
@@ -327,6 +396,44 @@ public class Analizador8086 extends asm8086BaseListener {
         switch (opc) {
             case "PUSHF":
                 return OpCode.PUSHF;
+            case "DAA":
+                return OpCode.DAA;
+            case "STOSB":
+                return OpCode.STOSB;
+            case "LODSB":
+                return OpCode.LODSB;
+            case "CBW":
+                return OpCode.CBW;
+            case "POPF":
+                return OpCode.POPF;
+            case "DEC":
+                return OpCode.DEC;
+            case "POP":
+                return OpCode.POP;
+            case "NEG":
+                return OpCode.NEG;
+            case "IDIV":
+                return OpCode.IDIV;
+            case "XOR":
+                return OpCode.XOR;
+            case "LES":
+                return OpCode.LES;
+            case "SHL":
+                return OpCode.SHL;
+            case "MOV":
+                return OpCode.MOV;
+            case "LOOPNE":
+                return OpCode.LOOPNE;
+            case "JNAE":
+                return OpCode.JNAE;
+            case "JP":
+                return OpCode.JP;
+            case "JC":
+                return OpCode.JC;
+            case "JNL":
+                return OpCode.JNL;
+            case "JAE":
+                return OpCode.JAE;
             default:
                 return OpCode.UNKNOWN;
         }

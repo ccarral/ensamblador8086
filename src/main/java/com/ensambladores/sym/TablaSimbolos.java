@@ -41,7 +41,11 @@ public class TablaSimbolos {
     }
 
     public Simbolo getSimb(String etiqueta) {
-        // return this.tablaInner.get(etiqueta.toLowerCase());
+        for(Simbolo s: this.tablaInner){
+            if(s.getEtiqueta().equals(etiqueta.toLowerCase())){
+                return s;
+            }
+        }
         return null;
     }
 

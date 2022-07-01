@@ -11,9 +11,18 @@ public class Asm8086ErrorListener extends BaseErrorListener {
 
     private PrintStream out;
     private boolean poisoned = false;
+    private boolean longTermPoisoned = false;
 
     public boolean isPoisoned() {
         return poisoned;
+    }
+
+    public boolean isLongTermPoisoned(){
+        return this.longTermPoisoned;
+    }
+
+    public void setPoisoned(boolean val){
+        this.poisoned = val;
     }
 
     public Asm8086ErrorListener(PrintStream out) {
@@ -24,6 +33,7 @@ public class Asm8086ErrorListener extends BaseErrorListener {
     public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line, int charPositionInLine,
             String msg, RecognitionException e) {
         this.poisoned = true;
+        this.longTermPoisoned = true;
         this.out.printf("err [%d:%d]: %s\n", line, charPositionInLine, msg);
     }
 
