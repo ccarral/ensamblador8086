@@ -20,10 +20,6 @@ public class TablaSimbolos {
         return this.tablaInner;
     }
 
-    public long incrementaContador(int o) {
-        return this.contador++;
-    }
-
     public void añadeSimbolo(String etiqueta, int dir) {
         Simbolo simb = new Simbolo();
         simb.setEtiqueta(etiqueta.toLowerCase());
@@ -55,7 +51,7 @@ public class TablaSimbolos {
         out = out.concat(String.format("%10s %4s %10s\n", "simb", "tipo", "dir"));
         out = out.concat("-------------------------\n");
         for (Simbolo s : this.getTablaInner()) {
-            out = out.concat(String.format("%10s %4s 0x%08X\n", s.getEtiqueta(), s.getTipo(), s.getDireccion()));
+            out = out.concat(String.format("%10s %4s 0x%04X\n", s.getEtiqueta(), s.getTipo(), s.getDireccion()));
         }
         out = out.concat("-------------------------\n");
         return out;

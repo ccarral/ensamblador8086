@@ -1,18 +1,11 @@
 package com.ensambladores;
 
 import java.io.PrintStream;
-import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.HexFormat;
-import java.util.List;
 
 import org.antlr.v4.runtime.ANTLRInputStream;
-import org.antlr.v4.runtime.misc.Interval;
 
-import com.google.common.base.Strings;
-import com.google.common.io.ByteArrayDataInput;
-import com.google.common.io.ByteArrayDataOutput;
-import com.google.common.primitives.UnsignedBytes;
 import com.ensambladores.compiler.asm8086BaseListener;
 import com.ensambladores.compiler.asm8086Parser.DbContext;
 import com.ensambladores.compiler.asm8086Parser.DupdeclContext;
@@ -25,6 +18,7 @@ import com.ensambladores.compiler.asm8086Parser.LineContext;
 import com.ensambladores.compiler.asm8086Parser.NameContext;
 import com.ensambladores.compiler.asm8086Parser.NumberContext;
 import com.ensambladores.compiler.asm8086Parser.OpcodeContext;
+import com.ensambladores.compiler.asm8086Parser.Register_Context;
 import com.ensambladores.error.Asm8086ErrorListener;
 import com.ensambladores.instrucciones.Codificador;
 import com.ensambladores.instrucciones.OpCode;
@@ -32,11 +26,14 @@ import com.ensambladores.instrucciones.OpCodeProperties;
 import com.ensambladores.sym.Simbolo;
 import com.ensambladores.sym.TablaSimbolos;
 import com.ensambladores.sym.TipoSimbolo;
+import com.google.common.base.Strings;
+import com.google.common.primitives.UnsignedBytes;
 
 public class Analizador8086 extends asm8086BaseListener {
     private TablaSimbolos tablaSimbolos = new TablaSimbolos();
     private Asm8086ErrorListener errorListener;
     private PrintStream outFile;
+    private PrintStream tokenOutFile;
     private int contadorPrograma = 0x0;
     private ANTLRInputStream input;
     private String[] lineas;
@@ -81,6 +78,10 @@ public class Analizador8086 extends asm8086BaseListener {
         this.outFile = outFile;
     }
 
+    public void setTokenOutFile(PrintStream tokenOutFile) {
+        this.tokenOutFile = tokenOutFile;
+    }
+
     public void setErrorListener(Asm8086ErrorListener errorListener) {
         this.errorListener = errorListener;
     }
@@ -88,7 +89,7 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void enterLine(LineContext ctx) {
         super.enterLine(ctx);
-        outFile.printf("%08X  ", this.contadorPrograma);
+        outFile.printf("%04X  ", this.contadorPrograma);
     }
 
     @Override
@@ -116,11 +117,13 @@ public class Analizador8086 extends asm8086BaseListener {
 
         outFile.printf("%s %s\n", Strings.padEnd(lineas[linea - 1], this.longestLineLength, ' '),
                 Strings.padStart(codedInst, 8, ' '));
+        tokenOutFile.println();
     }
 
     @Override
     public void exitLabel(LabelContext ctx) {
         super.exitLabel(ctx);
+        tokenOutFile.print(" ETIQUETA ");
         NameContext nameCtx = ctx.name();
         String etiqueta = nameCtx.getText();
         int linea = ctx.getStart().getLine();
@@ -177,6 +180,7 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void exitOpcode(OpcodeContext ctx) {
         super.exitOpcode(ctx);
+        tokenOutFile.print(" INST ");
         // Añadir al return stack
         String opcString = ctx.OPCODE().getText();
         OpCode opc = fromOpcodeStr(opcString);
@@ -273,6 +277,7 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void exitDb(DbContext ctx) {
         super.exitDb(ctx);
+        this.tokenOutFile.print(" DB ");
 
         this.tablaSimbolos.setTipoUltimoAñadido(TipoSimbolo.BYTE);
 
@@ -288,6 +293,7 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void exitDw(DwContext ctx) {
         super.exitDw(ctx);
+        this.tokenOutFile.print(" DW ");
         this.tablaSimbolos.setTipoUltimoAñadido(TipoSimbolo.WORD);
 
         // Verificamos si estamos en contexto dup(byte)
@@ -296,6 +302,28 @@ public class Analizador8086 extends asm8086BaseListener {
         // Verificamos si estamos en contexto expressionlist
         ExpressionlistContext exprListCtx = ctx.expressionlist();
         this.procesaDefineVar(dupDeclCtx, exprListCtx, TipoSimbolo.WORD);
+    }
+
+    
+
+    @Override
+    public void exitDupdecl(DupdeclContext ctx) {
+        super.exitDupdecl(ctx);
+        this.tokenOutFile.print(" DUP ");
+    }
+
+
+
+    @Override
+    public void exitRegister_(Register_Context ctx) {
+        super.exitRegister_(ctx);
+        this.tokenOutFile.print("REG");
+    }
+
+    @Override
+    public void exitNumber(NumberContext ctx) {
+        super.exitNumber(ctx);
+        this.tokenOutFile.print(" NUM ");
     }
 
     // Regresa el número contenido en literal como un entero con signo
@@ -390,6 +418,8 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void exitEqu(EquContext ctx) {
         super.exitEqu(ctx);
+        this.tokenOutFile.print(" EQU ");
+
         String valor = ctx.expression().getText();
         String etq = ctx.name().getText();
 
