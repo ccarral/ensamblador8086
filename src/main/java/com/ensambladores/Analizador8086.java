@@ -4,6 +4,7 @@ import java.io.PrintStream;
 import java.util.ArrayDeque;
 import java.util.HexFormat;
 
+import com.ensambladores.compiler.asm8086Parser;
 import org.antlr.v4.runtime.ANTLRInputStream;
 
 import com.ensambladores.compiler.asm8086BaseListener;
@@ -304,7 +305,12 @@ public class Analizador8086 extends asm8086BaseListener {
         this.procesaDefineVar(dupDeclCtx, exprListCtx, TipoSimbolo.WORD);
     }
 
-    
+
+    @Override
+    public void exitEnds(asm8086Parser.EndsContext ctx) {
+        super.exitEnds(ctx);
+        this.contadorPrograma = 0;
+    }
 
     @Override
     public void exitDupdecl(DupdeclContext ctx) {
