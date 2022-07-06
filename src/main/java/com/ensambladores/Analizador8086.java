@@ -97,13 +97,14 @@ public class Analizador8086 extends asm8086BaseListener {
     public void exitLine(LineContext ctx) {
         super.exitLine(ctx);
 
-        String codedInst = "";
+        String codedInst = "OK";
 
         int linea = ctx.start.getLine();
 
         if (this.errorListener.isPoisoned()) {
-            codedInst = "ERR";
+            codedInst = this.errorListener.getErrMsgBuf();
             this.errorListener.setPoisoned(false);
+            this.errorListener.flushErrMsgBuf();
             this.clearOutBuf();
         } else {
             this.contadorPrograma += this.bufWriteIdx;
@@ -111,7 +112,9 @@ public class Analizador8086 extends asm8086BaseListener {
             for (int i = 0; i < this.bufWriteIdx; i++) {
                 sb.append(String.format("%02X", this.outByteBuf[i]));
             }
-            codedInst = sb.toString();
+            if(!sb.toString().equals("")){
+                codedInst = sb.toString();
+            }
             this.clearOutBuf();
         }
         // System.err.println(lineas[linea - 1]);
