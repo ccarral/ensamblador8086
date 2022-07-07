@@ -9,6 +9,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.antlr.v4.runtime.*;
@@ -21,8 +22,6 @@ import com.ensambladores.error.Asm8086ErrorListener;
 import com.ensambladores.sym.TablaSimbolos;
 
 import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.io.output.ByteArrayOutputStream;
-import org.stringtemplate.v4.ST;
 
 /**
  * Hello world!
@@ -41,8 +40,11 @@ public class App {
             Path filePath = Paths.get(fileNameArg);
             String base = FilenameUtils.getBaseName(fileNameArg);
             String outFileName = base.concat(".o");
+            String tokensFileName = base.concat(".tokens");
 
             PrintStream outStream = new PrintStream(outFileName);
+
+            PrintStream tokensFileStream = new PrintStream(tokensFileName);
 
             fileInputStream = new FileInputStream(fileNameArg);
 
@@ -51,7 +53,34 @@ public class App {
             ANTLRInputStream stream = new ANTLRInputStream(fileInputStream);
             asm8086Lexer lex = new asm8086Lexer(stream);
             CommonTokenStream tokens = new CommonTokenStream(lex);
+
+            List<Token> tokenList = (List<Token>) lex.getAllTokens();
+            lex.reset();
+
             asm8086Parser parser = new asm8086Parser(tokens);
+
+            Vocabulary v = parser.getVocabulary();
+            List<String> tokensFiltrados = new ArrayList<>();
+            tokensFiltrados.add("EOF");
+            tokensFiltrados.add("EOL");
+
+            for(Token t: tokenList){
+                int tokenType = t.getType();
+                String symbol = v.getSymbolicName(tokenType);
+                String literal = t.getText();
+                if(symbol!= null && symbol.equals("EOL")){
+                    System.out.println();
+                }else{
+                    if(!tokensFiltrados.contains(symbol)
+                            && symbol !=null
+                            && t.getChannel() != Token.HIDDEN_CHANNEL){
+                        System.out.printf("%s %s ",literal, symbol);
+                    }
+                }
+            }
+
+            int sizeTokens = tokens.size();
+
 
             Asm8086ErrorListener errorListener = new Asm8086ErrorListener(System.err);
 
@@ -63,18 +92,12 @@ public class App {
             listener.setOutFile(outStream);
             listener.setInput(stream);
             listener.setLineas(lineas.toArray(new String[0]));
+            listener.setTokenOutFile(tokensFileStream);
 
             parser.addParseListener(listener);
             ParseTree tree = parser.prog();
             TablaSimbolos ts = listener.getTablaSimbolos();
 
-            if (errorListener.isLongTermPoisoned()) {
-                System.err.println("\nHubo errores en la compilación!");
-                System.err.println("\nNota: los símbolos son agregados a la tabla antes de verificar que estan");
-                System.err.println("       correctamente declarados, por lo que sus direcciones pueden ser equivocadas.");
-                System.err.println("       Para ver una tabla correcta, corrija los errores en la compilación\n");
-            } 
-              
             System.out.println(ts.toString());
             
 

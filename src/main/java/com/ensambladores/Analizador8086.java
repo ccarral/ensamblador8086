@@ -137,7 +137,7 @@ public class Analizador8086 extends asm8086BaseListener {
         super.exitLabel(ctx);
         tokenOutFile.print(" ETIQUETA ");
         NameContext nameCtx = ctx.name();
-        String etiqueta = nameCtx.getText();
+        String etiqueta = nameCtx.getText().toLowerCase();
         int linea = ctx.getStart().getLine();
         int col = ctx.getStart().getCharPositionInLine();
         if (etiqueta.length() > 10) {
