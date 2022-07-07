@@ -20,21 +20,29 @@ public class TablaSimbolos {
         return this.tablaInner;
     }
 
-    public void añadeSimbolo(String etiqueta, int dir) {
-        Simbolo simb = new Simbolo();
-        simb.setEtiqueta(etiqueta.toLowerCase());
-        simb.setDireccion(dir);
-        simb.setTipo(TipoSimbolo.WORD);
-        tablaInner.add(simb);
+    public void añadeSimbolo(Simbolo s) {
+        tablaInner.add(s);
+    }
+
+    public void setTamUltimoAñadido(TamañoSimbolo tamañoSimbolo) {
+        Simbolo ultimoAñadido = this.tablaInner.pollLast();
+        if (ultimoAñadido != null) {
+            ultimoAñadido.setTam(tamañoSimbolo);
+            this.tablaInner.addLast(ultimoAñadido);
+        }
     }
 
     public void setTipoUltimoAñadido(TipoSimbolo tipoSimbolo) {
         Simbolo ultimoAñadido = this.tablaInner.pollLast();
         if (ultimoAñadido != null) {
-            ultimoAñadido.setTipo(tipoSimbolo);
+            ultimoAñadido.setTipoSimbolo(tipoSimbolo);
             this.tablaInner.addLast(ultimoAñadido);
+            System.out.println("Cambiando "+ ultimoAñadido.getEtiqueta());
         }
     }
+
+
+
 
     public Simbolo getSimb(String etiqueta) {
         for(Simbolo s: this.tablaInner){
@@ -48,10 +56,10 @@ public class TablaSimbolos {
     public String toString() {
         String out = null;
         out = String.format("-------------------------\n");
-        out = out.concat(String.format("%10s %4s %10s\n", "simb", "tipo", "dir"));
+        out = out.concat(String.format("%10s %5s %5s %-5s\n", "simb","tipo","B/W", "dir"));
         out = out.concat("-------------------------\n");
         for (Simbolo s : this.getTablaInner()) {
-            out = out.concat(String.format("%10s %4s 0x%04X\n", s.getEtiqueta(), s.getTipo(), s.getDireccion()));
+            out = out.concat(String.format("%10s %5s %5s %04X\n", s.getEtiqueta(), s.getTipoSimbolo(), s.getTam(), s.getDireccion()));
         }
         out = out.concat("-------------------------\n");
         return out;

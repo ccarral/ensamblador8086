@@ -5,6 +5,8 @@ import java.util.ArrayDeque;
 import java.util.HexFormat;
 
 import com.ensambladores.compiler.asm8086Parser;
+import com.ensambladores.sym.TamañoSimbolo;
+import com.ensambladores.sym.TipoSimbolo;
 import org.antlr.v4.runtime.ANTLRInputStream;
 
 import com.ensambladores.compiler.asm8086BaseListener;
@@ -26,11 +28,11 @@ import com.ensambladores.instrucciones.OpCode;
 import com.ensambladores.instrucciones.OpCodeProperties;
 import com.ensambladores.sym.Simbolo;
 import com.ensambladores.sym.TablaSimbolos;
-import com.ensambladores.sym.TipoSimbolo;
 import com.google.common.base.Strings;
 import com.google.common.primitives.UnsignedBytes;
 
 public class Analizador8086 extends asm8086BaseListener {
+    private Simbolo simboloPendiente = null;
     private TablaSimbolos tablaSimbolos = new TablaSimbolos();
     private Asm8086ErrorListener errorListener;
     private PrintStream outFile;
@@ -112,10 +114,16 @@ public class Analizador8086 extends asm8086BaseListener {
             for (int i = 0; i < this.bufWriteIdx; i++) {
                 sb.append(String.format("%02X", this.outByteBuf[i]));
             }
-            if(!sb.toString().equals("")){
+            if(!sb.toString().isEmpty()){
                 codedInst = sb.toString();
             }
             this.clearOutBuf();
+
+            // Añadir símbolo pendiente
+            if(this.simboloPendiente != null){
+                this.tablaSimbolos.añadeSimbolo(this.simboloPendiente);
+                this.simboloPendiente = null;
+            }
         }
         // System.err.println(lineas[linea - 1]);
 
@@ -136,7 +144,8 @@ public class Analizador8086 extends asm8086BaseListener {
             String msg = String.format("la etiqueta %s es demasiado larga", etiqueta);
             this.errorListener.syntaxError(null, null, linea, col, msg, null);
         } else {
-            tablaSimbolos.añadeSimbolo(etiqueta, this.contadorPrograma);
+            this.simboloPendiente = new Simbolo(etiqueta);
+            this.simboloPendiente.setDireccion(this.contadorPrograma);
         }
     }
 
@@ -194,8 +203,8 @@ public class Analizador8086 extends asm8086BaseListener {
     }
 
     public void procesaDefineVar(DupdeclContext dupDeclCtx, ExpressionlistContext exprListCtx,
-            TipoSimbolo tipoSimbolo) {
-        int offset = tipoSimbolo == TipoSimbolo.BYTE ? 1 : 2;
+            TamañoSimbolo tamañoSimbolo) {
+        int offset = tamañoSimbolo == TamañoSimbolo.BYTE ? 1 : 2;
         // Verificamos si estamos en contexto dup(byte)
 
         // Verificamos si estamos en contexto expressionlist
@@ -213,8 +222,8 @@ public class Analizador8086 extends asm8086BaseListener {
                 // Verificar que el número cabe en el tipo de variable
                 try {
                     // Esto solo debería de ser una expresion numerica, pero nunca se sabe...
-                    if (testOverflow(texto, tipoSimbolo)) {
-                        msg = String.format("no es posible definir un %s con el número %s", tipoSimbolo, texto);
+                    if (testOverflow(texto, tamañoSimbolo)) {
+                        msg = String.format("no es posible definir un %s con el número %s", tamañoSimbolo, texto);
                         this.errorListener.syntaxError(null, null, linea, columna, msg, null);
                     } else {
                         this.incrementaContadorPrograma(offset);
@@ -239,10 +248,10 @@ public class Analizador8086 extends asm8086BaseListener {
             if (numCtx != null) {
                 String literal = numCtx.getText();
                 // Verificar que no hay overflow
-                if (testOverflow(literal, tipoSimbolo)) {
+                if (testOverflow(literal, tamañoSimbolo)) {
                     int linea = numCtx.NUMBER().getSymbol().getLine();
                     int columna = numCtx.NUMBER().getSymbol().getCharPositionInLine();
-                    String msg = String.format("no es posible definir un %s con el número %s", tipoSimbolo, literal);
+                    String msg = String.format("no es posible definir un %s con el número %s", tamañoSimbolo, literal);
                     this.errorListener.syntaxError(null, null, linea, columna, msg, null);
                 } else {
                     // Añadir al PC
@@ -283,14 +292,17 @@ public class Analizador8086 extends asm8086BaseListener {
         super.exitDb(ctx);
         this.tokenOutFile.print(" DB ");
 
-        this.tablaSimbolos.setTipoUltimoAñadido(TipoSimbolo.BYTE);
+        if(this.simboloPendiente != null){
+            simboloPendiente.setTam(TamañoSimbolo.BYTE);
+            simboloPendiente.setTipoSimbolo(TipoSimbolo.VAR);
+        }
 
         // Verificamos si estamos en contexto dup(byte)
         DupdeclContext dupDeclCtx = ctx.dupdecl();
 
         // Verificamos si estamos en contexto expressionlist
         ExpressionlistContext exprListCtx = ctx.expressionlist();
-        this.procesaDefineVar(dupDeclCtx, exprListCtx, TipoSimbolo.BYTE);
+        this.procesaDefineVar(dupDeclCtx, exprListCtx, TamañoSimbolo.BYTE);
 
     }
 
@@ -298,14 +310,19 @@ public class Analizador8086 extends asm8086BaseListener {
     public void exitDw(DwContext ctx) {
         super.exitDw(ctx);
         this.tokenOutFile.print(" DW ");
-        this.tablaSimbolos.setTipoUltimoAñadido(TipoSimbolo.WORD);
+
+        if(this.simboloPendiente != null){
+            simboloPendiente.setTam(TamañoSimbolo.WORD);
+            simboloPendiente.setTipoSimbolo(TipoSimbolo.VAR);
+        }
+
 
         // Verificamos si estamos en contexto dup(byte)
         DupdeclContext dupDeclCtx = ctx.dupdecl();
 
         // Verificamos si estamos en contexto expressionlist
         ExpressionlistContext exprListCtx = ctx.expressionlist();
-        this.procesaDefineVar(dupDeclCtx, exprListCtx, TipoSimbolo.WORD);
+        this.procesaDefineVar(dupDeclCtx, exprListCtx, TamañoSimbolo.WORD);
     }
 
 
@@ -353,7 +370,7 @@ public class Analizador8086 extends asm8086BaseListener {
         }
     }
 
-    public static boolean testOverflow(String literal, TipoSimbolo tipoSimbolo) {
+    public static boolean testOverflow(String literal, TamañoSimbolo tamañoSimbolo) {
         char atEnd = literal.charAt(literal.length() - 1);
         String substring = literal.substring(0, literal.length() - 1);
         int parsed;
@@ -398,9 +415,9 @@ public class Analizador8086 extends asm8086BaseListener {
                 break;
             default:
                 parsed = Integer.parseInt(literal);
-                if (tipoSimbolo == TipoSimbolo.BYTE) {
+                if (tamañoSimbolo == TamañoSimbolo.BYTE) {
                     return !(parsed >= -128 && parsed <= 127);
-                } else if (tipoSimbolo == TipoSimbolo.WORD) {
+                } else if (tamañoSimbolo == TamañoSimbolo.WORD) {
                     return !(parsed >= -32768 && parsed <= 32767);
                 }
                 break;
@@ -414,9 +431,9 @@ public class Analizador8086 extends asm8086BaseListener {
          * sb.append("]");
          * System.out.printf("val:%s, bytes:%s\n" , literal, sb.toString());
          */
-        if (tipoSimbolo == TipoSimbolo.BYTE) {
+        if (tamañoSimbolo == TamañoSimbolo.BYTE) {
             return bytes[0] != 0x00 || bytes[1] != 0x00 || bytes[2] != 0x00;
-        } else if (tipoSimbolo == TipoSimbolo.WORD) {
+        } else if (tamañoSimbolo == TamañoSimbolo.WORD) {
             return bytes[0] != 0x00 || bytes[1] != 00;
         }
 
@@ -428,17 +445,22 @@ public class Analizador8086 extends asm8086BaseListener {
     public void exitEqu(EquContext ctx) {
         super.exitEqu(ctx);
         this.tokenOutFile.print(" EQU ");
-
         String valor = ctx.expression().getText();
-        String etq = ctx.name().getText();
-
         int linea = ctx.getStart().getLine();
         int col = ctx.getStart().getCharPositionInLine();
-        if (testOverflow(valor, TipoSimbolo.WORD)) {
-            String msg = String.format("no es posible definir un %s con el número %s", TipoSimbolo.WORD, valor);
+        String msg;
+        if(this.simboloPendiente == null){
+            msg = "nombre de constante faltante";
+            this.errorListener.syntaxError(null, null, linea, col, msg, null);
+        }else{
+            this.simboloPendiente.setTipoSimbolo(TipoSimbolo.CONST);
+            this.simboloPendiente.setTam(TamañoSimbolo.WORD);
+        }
+
+        if (testOverflow(valor, TamañoSimbolo.WORD)) {
+            msg = String.format("no es posible definir un %s con el número %s", TamañoSimbolo.WORD, valor);
             this.errorListener.syntaxError(null, null, linea, col, msg, null);
         } else {
-            this.tablaSimbolos.añadeSimbolo(etq, this.contadorPrograma);
             this.contadorPrograma += 2;
         }
     }

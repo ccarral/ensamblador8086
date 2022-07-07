@@ -9,6 +9,9 @@ import org.antlr.v4.runtime.Recognizer;
 
 public class Asm8086ErrorListener extends BaseErrorListener {
 
+
+    private String errMsgBuf = new String();
+
     private PrintStream out;
     private boolean poisoned = false;
     private boolean longTermPoisoned = false;
@@ -29,12 +32,23 @@ public class Asm8086ErrorListener extends BaseErrorListener {
         this.out = out;
     }
 
+    public String getErrMsgBuf() {
+        return errMsgBuf;
+    }
     @Override
     public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line, int charPositionInLine,
             String msg, RecognitionException e) {
         this.poisoned = true;
         this.longTermPoisoned = true;
-        this.out.printf("err [%d:%d]: %s\n", line, charPositionInLine, msg);
+        this.writeToErrMsgBuf(String.format("err: %s", msg));
+    }
+
+    public void writeToErrMsgBuf(String msg){
+        this.errMsgBuf = this.errMsgBuf.concat(msg);
+    }
+
+    public void flushErrMsgBuf(){
+        this.errMsgBuf = new String();
     }
 
 }

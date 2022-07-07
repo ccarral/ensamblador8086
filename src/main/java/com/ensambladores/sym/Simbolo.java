@@ -1,7 +1,10 @@
 package com.ensambladores.sym;
 
 public class Simbolo {
-    private TipoSimbolo tipo;
+    private TamañoSimbolo tam;
+
+
+    private TipoSimbolo tipoSimbolo = TipoSimbolo.ETQ;
     private String etiqueta;
     private int direccion;
 
@@ -13,15 +16,23 @@ public class Simbolo {
         this.direccion = direccion;
     }
 
-    public Simbolo() {
+    public Simbolo(String etq) {
+        this.etiqueta = etq;
     }
 
-    public TipoSimbolo getTipo() {
-        return tipo;
+    public TipoSimbolo getTipoSimbolo() {
+        return tipoSimbolo;
     }
 
-    public void setTipo(TipoSimbolo tipo) {
-        this.tipo = tipo;
+    public void setTipoSimbolo(TipoSimbolo tipoSimbolo) {
+        this.tipoSimbolo = tipoSimbolo;
+    }
+    public TamañoSimbolo getTam() {
+        return tam;
+    }
+
+    public void setTam(TamañoSimbolo tam) {
+        this.tam = tam;
     }
 
     public String getEtiqueta() {
@@ -33,8 +44,8 @@ public class Simbolo {
     }
 
 
-    public Simbolo(TipoSimbolo tipo, String etiqueta) {
+    public Simbolo(TamañoSimbolo tam, String etiqueta) {
         this.etiqueta = etiqueta;
-        this.tipo = tipo;
+        this.tam = tam;
     }
 }

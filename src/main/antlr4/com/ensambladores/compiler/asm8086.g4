@@ -106,7 +106,7 @@ dd
    ;
 
 equ
-   : name EQU expression
+   : EQU expression
    ;
 
 dupdecl
