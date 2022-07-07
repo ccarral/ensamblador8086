@@ -195,7 +195,7 @@ public class Analizador8086 extends asm8086BaseListener {
         super.exitOpcode(ctx);
         tokenOutFile.print(" INST ");
         // Añadir al return stack
-        String opcString = ctx.OPCODE().getText();
+        String opcString = ctx.INST().getText();
         OpCode opc = fromOpcodeStr(opcString);
         this.opCodeReturnStack.push(opc);
         byte[] opcBytes = Codificador.codifica(opc);
@@ -249,8 +249,8 @@ public class Analizador8086 extends asm8086BaseListener {
                 String literal = numCtx.getText();
                 // Verificar que no hay overflow
                 if (testOverflow(literal, tamañoSimbolo)) {
-                    int linea = numCtx.NUMBER().getSymbol().getLine();
-                    int columna = numCtx.NUMBER().getSymbol().getCharPositionInLine();
+                    int linea = numCtx.NUM().getSymbol().getLine();
+                    int columna = numCtx.NUM().getSymbol().getCharPositionInLine();
                     String msg = String.format("no es posible definir un %s con el número %s", tamañoSimbolo, literal);
                     this.errorListener.syntaxError(null, null, linea, columna, msg, null);
                 } else {

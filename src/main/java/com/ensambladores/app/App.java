@@ -63,6 +63,7 @@ public class App {
             List<String> tokensFiltrados = new ArrayList<>();
             tokensFiltrados.add("EOF");
             tokensFiltrados.add("EOL");
+            tokensFiltrados.add("ENDS");
 
             for(Token t: tokenList){
                 int tokenType = t.getType();
@@ -74,7 +75,7 @@ public class App {
                     if(!tokensFiltrados.contains(symbol)
                             && symbol !=null
                             && t.getChannel() != Token.HIDDEN_CHANNEL){
-                        System.out.printf("%s %s ",literal, symbol);
+                        System.out.printf("%s [%s] ",literal, symbol);
                     }
                 }
             }
