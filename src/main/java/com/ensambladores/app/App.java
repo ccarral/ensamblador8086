@@ -40,11 +40,9 @@ public class App {
             Path filePath = Paths.get(fileNameArg);
             String base = FilenameUtils.getBaseName(fileNameArg);
             String outFileName = base.concat(".o");
-            String tokensFileName = base.concat(".tokens");
 
             PrintStream outStream = new PrintStream(outFileName);
 
-            PrintStream tokensFileStream = new PrintStream(tokensFileName);
 
             fileInputStream = new FileInputStream(fileNameArg);
 
@@ -64,6 +62,9 @@ public class App {
             tokensFiltrados.add("EOF");
             tokensFiltrados.add("EOL");
             tokensFiltrados.add("ENDS");
+            tokensFiltrados.add("DATA");
+            tokensFiltrados.add("STACK");
+            tokensFiltrados.add("CODE");
 
             for(Token t: tokenList){
                 int tokenType = t.getType();
@@ -80,9 +81,6 @@ public class App {
                 }
             }
 
-            int sizeTokens = tokens.size();
-
-
             Asm8086ErrorListener errorListener = new Asm8086ErrorListener(System.err);
 
             parser.removeErrorListeners();
@@ -90,10 +88,11 @@ public class App {
 
             Analizador8086 listener = new Analizador8086();
             listener.setErrorListener(errorListener);
-            listener.setOutFile(outStream);
+            //listener.setOutFile(outStream);
+            listener.setOutFile(System.out);
+            //listener.setOutFile(System.out);
             listener.setInput(stream);
             listener.setLineas(lineas.toArray(new String[0]));
-            listener.setTokenOutFile(tokensFileStream);
 
             parser.addParseListener(listener);
             ParseTree tree = parser.prog();

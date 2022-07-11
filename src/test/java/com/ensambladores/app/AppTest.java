@@ -1,6 +1,7 @@
 package com.ensambladores.app;
 
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -33,43 +34,10 @@ public class AppTest {
     @Test
     public void testSuccesfulParse() {
         try {
-            File f = new File("./plantilla2.asm");
-            File fOut  = new File("./plantilla2.o");
-
-            Path path = Paths.get("./plantilla2.asm");
-
-            FileInputStream fileInput = new FileInputStream(f);
-            FileOutputStream fileOut = new FileOutputStream(fOut);
-            PrintStream fileOutPrint = new PrintStream(fileOut);
-
-            File fux = null;
-            List<String> lineas = Files.readAllLines(path);
-
-
-            ANTLRInputStream stream = new ANTLRInputStream(fileInput);
-            asm8086Lexer lex = new asm8086Lexer(stream);
-            CommonTokenStream tokens = new CommonTokenStream(lex);
-            asm8086Parser parser = new asm8086Parser(tokens);
-
-            Asm8086ErrorListener errorListener = new Asm8086ErrorListener(System.err);
-
-            parser.removeErrorListeners();
-            parser.addErrorListener(errorListener);
-
-            Analizador8086 listener = new Analizador8086();
-            listener.setErrorListener(errorListener);
-            listener.setOutFile(fileOutPrint);
-            listener.setInput(stream);
-            listener.setLineas(lineas.toArray(new String[0]));
-
-            parser.addParseListener(listener);
-            ParseTree tree = parser.prog();
-            TablaSimbolos ts = listener.getTablaSimbolos();
-            //if (errorListener.isPoisoned()) {
-                System.out.print(ts.toString());
-           // }
+            App.main(new String[]{"plantilla3.asm"});
         } catch (Exception e) {
             e.printStackTrace();
+            fail("Hubo excepcion en la app");
         }
     }
 

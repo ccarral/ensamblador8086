@@ -1,7 +1,17 @@
 package com.ensambladores.sym;
 
 public class Simbolo {
-    private TamañoSimbolo tam;
+    private TamañoSimbolo tam = TamañoSimbolo.WORD;
+
+    public int getLongitud() {
+        return longitud;
+    }
+
+    public void setLongitud(int longitud) {
+        this.longitud = longitud;
+    }
+
+    private int longitud = 4;
 
 
     private TipoSimbolo tipoSimbolo = TipoSimbolo.ETQ;

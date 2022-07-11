@@ -4,32 +4,31 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import com.ensambladores.sym.TamañoSimbolo;
 import org.junit.Test;
-
-import com.ensambladores.sym.TipoSimbolo;
 
 public class Analizador8086Test {
     @Test
     public void testParseNumberLiteral() {
-        assertFalse(Analizador8086.testOverflow("FFH", TipoSimbolo.BYTE));
-        assertFalse(Analizador8086.testOverflow("FFFFH", TipoSimbolo.WORD));
-        assertTrue(Analizador8086.testOverflow("1FFH", TipoSimbolo.BYTE));
-        assertTrue(Analizador8086.testOverflow("1FFFFH", TipoSimbolo.WORD));
+        assertFalse(Analizador8086.testOverflow("FFH", TamañoSimbolo.BYTE));
+        assertFalse(Analizador8086.testOverflow("FFFFH", TamañoSimbolo.WORD));
+        assertTrue(Analizador8086.testOverflow("1FFH", TamañoSimbolo.BYTE));
+        assertTrue(Analizador8086.testOverflow("1FFFFH", TamañoSimbolo.WORD));
 
-        assertFalse(Analizador8086.testOverflow("11111111b", TipoSimbolo.BYTE));
-        assertFalse(Analizador8086.testOverflow("1111111111111111b", TipoSimbolo.WORD));
-        assertTrue(Analizador8086.testOverflow("111111111b", TipoSimbolo.BYTE));
-        assertTrue(Analizador8086.testOverflow("11111111111111111b", TipoSimbolo.BYTE));
+        assertFalse(Analizador8086.testOverflow("11111111b", TamañoSimbolo.BYTE));
+        assertFalse(Analizador8086.testOverflow("1111111111111111b", TamañoSimbolo.WORD));
+        assertTrue(Analizador8086.testOverflow("111111111b", TamañoSimbolo.BYTE));
+        assertTrue(Analizador8086.testOverflow("11111111111111111b", TamañoSimbolo.BYTE));
 
-        assertFalse(Analizador8086.testOverflow("-128", TipoSimbolo.BYTE));
-        assertFalse(Analizador8086.testOverflow("127", TipoSimbolo.BYTE));
-        assertFalse(Analizador8086.testOverflow("-32768", TipoSimbolo.WORD));
-        assertFalse(Analizador8086.testOverflow("32767", TipoSimbolo.WORD));
+        assertFalse(Analizador8086.testOverflow("-128", TamañoSimbolo.BYTE));
+        assertFalse(Analizador8086.testOverflow("127", TamañoSimbolo.BYTE));
+        assertFalse(Analizador8086.testOverflow("-32768", TamañoSimbolo.WORD));
+        assertFalse(Analizador8086.testOverflow("32767", TamañoSimbolo.WORD));
 
-        assertTrue(Analizador8086.testOverflow("-129", TipoSimbolo.BYTE));
-        assertTrue(Analizador8086.testOverflow("128", TipoSimbolo.BYTE));
-        assertTrue(Analizador8086.testOverflow("-32769", TipoSimbolo.BYTE));
-        assertTrue(Analizador8086.testOverflow("32768", TipoSimbolo.BYTE));
+        assertTrue(Analizador8086.testOverflow("-129", TamañoSimbolo.BYTE));
+        assertTrue(Analizador8086.testOverflow("128", TamañoSimbolo.BYTE));
+        assertTrue(Analizador8086.testOverflow("-32769", TamañoSimbolo.BYTE));
+        assertTrue(Analizador8086.testOverflow("32768", TamañoSimbolo.BYTE));
     }
 
     @Test

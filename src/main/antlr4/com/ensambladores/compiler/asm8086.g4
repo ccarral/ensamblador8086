@@ -162,7 +162,7 @@ label
    ;
 
 expression
-   : multiplyingExpression (SIGN0 multiplyingExpression)*
+   : argument (SIGNO argument)*
    ;
 
 multiplyingExpression
@@ -360,7 +360,7 @@ COMMENT
 
 
 REGISTRO
-   : A H | A L | B H | B L | C H | C L | D H | D L | A X | B X | C X | D X | C I | D I | B P | S P | I P | C S | D S | E S | S S
+   : A H | A L | B H | B L | C H | C L | D H | D L | A X | B X | C X | D X | C I | D I | S I | B P | S P | I P | C S | D S | E S | S S
    ;
 
 

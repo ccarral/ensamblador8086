@@ -40,7 +40,7 @@ public class Asm8086ErrorListener extends BaseErrorListener {
             String msg, RecognitionException e) {
         this.poisoned = true;
         this.longTermPoisoned = true;
-        this.writeToErrMsgBuf(String.format("err: %s", msg));
+        this.writeToErrMsgBuf(String.format("err: %s; ", msg));
     }
 
     public void writeToErrMsgBuf(String msg){

@@ -1,10 +1,10 @@
 package com.ensambladores;
 
 import java.io.PrintStream;
-import java.util.ArrayDeque;
-import java.util.HexFormat;
+import java.util.*;
 
 import com.ensambladores.compiler.asm8086Parser;
+import com.ensambladores.instrucciones.*;
 import com.ensambladores.sym.TamañoSimbolo;
 import com.ensambladores.sym.TipoSimbolo;
 import org.antlr.v4.runtime.ANTLRInputStream;
@@ -20,12 +20,9 @@ import com.ensambladores.compiler.asm8086Parser.LabelContext;
 import com.ensambladores.compiler.asm8086Parser.LineContext;
 import com.ensambladores.compiler.asm8086Parser.NameContext;
 import com.ensambladores.compiler.asm8086Parser.NumberContext;
-import com.ensambladores.compiler.asm8086Parser.OpcodeContext;
+import com.ensambladores.compiler.asm8086Parser.ExpressionContext;
 import com.ensambladores.compiler.asm8086Parser.Register_Context;
 import com.ensambladores.error.Asm8086ErrorListener;
-import com.ensambladores.instrucciones.Codificador;
-import com.ensambladores.instrucciones.OpCode;
-import com.ensambladores.instrucciones.OpCodeProperties;
 import com.ensambladores.sym.Simbolo;
 import com.ensambladores.sym.TablaSimbolos;
 import com.google.common.base.Strings;
@@ -36,7 +33,6 @@ public class Analizador8086 extends asm8086BaseListener {
     private TablaSimbolos tablaSimbolos = new TablaSimbolos();
     private Asm8086ErrorListener errorListener;
     private PrintStream outFile;
-    private PrintStream tokenOutFile;
     private int contadorPrograma = 0x0;
     private ANTLRInputStream input;
     private String[] lineas;
@@ -46,6 +42,13 @@ public class Analizador8086 extends asm8086BaseListener {
     // No se espera leer o escribir más de 16 bytes por vez
     private byte[] outByteBuf = new byte[200];
     private int bufWriteIdx = 0;
+
+    private Registro detectedReg1 = Registro.AX;
+    private Registro detectedReg2;
+    private int detectedMem1 = 0x0000;
+    private int detectedMem2 = 0x0000;
+
+    private MMMField detectedMMMBits = MMMField.MMM000;
 
     public void setLineas(String[] lineas) {
         for (int i = 0; i < lineas.length; i++) {
@@ -81,9 +84,6 @@ public class Analizador8086 extends asm8086BaseListener {
         this.outFile = outFile;
     }
 
-    public void setTokenOutFile(PrintStream tokenOutFile) {
-        this.tokenOutFile = tokenOutFile;
-    }
 
     public void setErrorListener(Asm8086ErrorListener errorListener) {
         this.errorListener = errorListener;
@@ -110,17 +110,21 @@ public class Analizador8086 extends asm8086BaseListener {
             this.clearOutBuf();
         } else {
             this.contadorPrograma += this.bufWriteIdx;
+            //System.out.println("Bufidx " + this.bufWriteIdx);
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < this.bufWriteIdx; i++) {
-                sb.append(String.format("%02X", this.outByteBuf[i]));
+                //System.out.println("hex: "+ String.format("%02X", this.outByteBuf[i]));
+                sb = sb.append(String.format("%02X", this.outByteBuf[i]));
+                //System.out.println("sb:"+sb);
             }
-            if(!sb.toString().isEmpty()){
+            //System.out.println(sb);
+            if (!sb.toString().isEmpty()) {
                 codedInst = sb.toString();
             }
             this.clearOutBuf();
 
             // Añadir símbolo pendiente
-            if(this.simboloPendiente != null){
+            if (this.simboloPendiente != null) {
                 this.tablaSimbolos.añadeSimbolo(this.simboloPendiente);
                 this.simboloPendiente = null;
             }
@@ -129,13 +133,11 @@ public class Analizador8086 extends asm8086BaseListener {
 
         outFile.printf("%s %s\n", Strings.padEnd(lineas[linea - 1], this.longestLineLength, ' '),
                 Strings.padStart(codedInst, 8, ' '));
-        tokenOutFile.println();
     }
 
     @Override
     public void exitLabel(LabelContext ctx) {
         super.exitLabel(ctx);
-        tokenOutFile.print(" ETIQUETA ");
         NameContext nameCtx = ctx.name();
         String etiqueta = nameCtx.getText().toLowerCase();
         int linea = ctx.getStart().getLine();
@@ -152,58 +154,94 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void exitInstruction(InstructionContext ctx) {
         super.exitInstruction(ctx);
-        int props = 0;
+        AddressingMode addressingMode;
+        EnumSet<AddressingMode> supportedAddressingModes;
         String errMsg = null;
         int linea = ctx.start.getLine();
         int col = ctx.start.getCharPositionInLine();
+        byte[] disp = {};
+
+        String opcString = ctx.opcode().INST().getText();
+        OpCode opCode = fromOpcodeStr(opcString);
+
+        //System.out.println("Opcode detectado:"+opCode);
 
         ExpressionlistContext exprListCtx = ctx.expressionlist();
         if (exprListCtx == null) {
-            props |= OpCodeProperties.NO_ARGS;
+            addressingMode = AddressingMode.IMPL;
         } else {
-            props = this.opCodePropsReturnStack.pop();
+            // Obtener el modo de direccionamiento de la linea
+            exprListCtx.expression();
+            addressingMode = this.getAddressingMode(exprListCtx);
         }
 
-        OpCode opCode = this.opCodeReturnStack.pop();
+        //System.out.println("A ver que hay!:" + Arrays.toString(this.opCodeReturnStack.toArray()));
+        //OpCode opCode = this.opCodeReturnStack.pop();
+
+        supportedAddressingModes = opCode.getAddressingModes();
 
         // Valida la lógica de la instrucción
+        //System.out.println("detectado:"+opCode);
         if (opCode != OpCode.UNKNOWN) {
-            int expectedProps = opCode.getProps();
+            if (!supportedAddressingModes.contains(addressingMode)) {
+                errMsg = String.format("modo de direccionamiento no soportado: %s", addressingMode);
+                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
+            } else {
+                boolean esSaltoLargo = false;
 
-            if ((expectedProps & OpCodeProperties.NO_ARGS) != 0 // La instruccion no esperaba argumentos
-                    && (props & OpCodeProperties.ARGS) != 0 // Y recibio argumentos
-            ) {
-                errMsg = String.format("la instruccion %s no acepta argumentos", opCode);
-                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
-            }
+                if (opCode == OpCode.LOOPNE) {
+                    // Calcular salto entre contador de programa actual y etiqueta destino
+                    // Si esta no existe, entonces el error ya se detectó.
+                    //System.out.println("poisoned aqui:" + this.errorListener.isPoisoned());
+                    if (!this.errorListener.isPoisoned()) {
+                        disp = Codificador.codificaSalto(this.contadorPrograma, this.detectedMem1);
+                        // El salto NO debería de ser mayor a un byte
+                    }
+                }
+                if (EnumSet.of(OpCode.JNAE, OpCode.JP, OpCode.JC, OpCode.JNL, OpCode.JAE).contains(opCode)) {
+                    // Calcular salto
+                    // Ya se debe de tener la direccion de la etq en memoria
+                    esSaltoLargo = Codificador.esSaltoLargo(this.contadorPrograma, this.detectedMem1);
+                    disp = Codificador.codificaSalto(this.contadorPrograma, this.detectedMem1);
+                }
 
-            if ((expectedProps & OpCodeProperties.ARG_IS_LABEL) != 0
-                    && (props & OpCodeProperties.ARG_IS_LABEL) == 0) {
-                errMsg = String.format("la instruccion %s esperaba una etiqueta como argumento", opCode);
-                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
-            } else if ((expectedProps & OpCodeProperties.ARG_IS_LABEL) == 0 // El argumento no puede ser etq
-                    && (props & OpCodeProperties.ARG_IS_LABEL) != 0 // pero lo es
-            ) {
-                errMsg = String.format("la instruccion %s no recibe una etiqueta como argumento", opCode);
-                this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
+                InstructionTemplate template = Codificador.getTemplate(opCode, addressingMode, esSaltoLargo);
+                if (EnumSet.of(AddressingMode.REG8, AddressingMode.REG16, AddressingMode.MEM).contains(addressingMode)) {
+                    template.setRrr(detectedReg1.getRRRBits());
+                    template.setW(detectedReg1.getW());
+                }
+
+                if(addressingMode == AddressingMode.REG_MEM){
+                    template.setMmm(detectedMMMBits);
+                    disp = Codificador.codificaSalto(this.contadorPrograma, this.detectedMem2);
+                }
+
+
+                byte[] instBytes = template.buildBytes();
+                //System.out.println(Arrays.toString(instBytes));
+                this.writeAtEndOfBuffer(instBytes);
+                this.writeAtEndOfBuffer(disp);
             }
+        } else {
+            errMsg = String.format("inst no reconocida: %s", opcString);
+            this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
         }
+
     }
 
-    @Override
-    public void exitOpcode(OpcodeContext ctx) {
-        super.exitOpcode(ctx);
-        tokenOutFile.print(" INST ");
-        // Añadir al return stack
-        String opcString = ctx.INST().getText();
-        OpCode opc = fromOpcodeStr(opcString);
-        this.opCodeReturnStack.push(opc);
-        byte[] opcBytes = Codificador.codifica(opc);
-        this.writeAtEndOfBuffer(opcBytes);
-    }
+//    @Override
+//    public void exitOpcode(OpcodeContext ctx) {
+//        super.exitOpcode(ctx);
+//        // Añadir al return stack
+//        String opcString = ctx.INST().getText();
+//        OpCode opc = fromOpcodeStr(opcString);
+//        System.out.println("Detectado:" + opc);
+//        System.out.printf("Entrando aqui!: %s\n", Arrays.toString(this.opCodeReturnStack.toArray()));
+//        this.opCodeReturnStack.push(opc);
+//    }
 
     public void procesaDefineVar(DupdeclContext dupDeclCtx, ExpressionlistContext exprListCtx,
-            TamañoSimbolo tamañoSimbolo) {
+                                 TamañoSimbolo tamañoSimbolo) {
         int offset = tamañoSimbolo == TamañoSimbolo.BYTE ? 1 : 2;
         // Verificamos si estamos en contexto dup(byte)
 
@@ -218,6 +256,9 @@ public class Analizador8086 extends asm8086BaseListener {
             if (isCadena(texto)) {
                 // Se suma al CP el número de caracteres menos 2 por comillas
                 this.incrementaContadorPrograma(texto.length() - 2);
+                if(this.simboloPendiente!=null){
+                    this.simboloPendiente.setLongitud(texto.length()-2);
+                }
             } else {
                 // Verificar que el número cabe en el tipo de variable
                 try {
@@ -227,6 +268,9 @@ public class Analizador8086 extends asm8086BaseListener {
                         this.errorListener.syntaxError(null, null, linea, columna, msg, null);
                     } else {
                         this.incrementaContadorPrograma(offset);
+                        if(this.simboloPendiente!=null){
+                            this.simboloPendiente.setLongitud(offset);
+                        }
                     }
                 } catch (Exception e) {
                     msg = String.format("expresión no soportada: %s", texto);
@@ -256,43 +300,48 @@ public class Analizador8086 extends asm8086BaseListener {
                 } else {
                     // Añadir al PC
                     this.incrementaContadorPrograma(repetido * offset);
+                    if(this.simboloPendiente!=null){
+                        this.simboloPendiente.setLongitud(repetido*offset);
+                    }
                 }
             } else {
                 // Asumimos que se usó un caracter
                 this.incrementaContadorPrograma(repetido * offset);
+                if(this.simboloPendiente!=null){
+                    this.simboloPendiente.setLongitud(repetido*offset);
+                }
             }
         }
     }
 
-    @Override
-    public void exitExpressionlist(ExpressionlistContext exprListCtx) {
-        super.exitExpressionlist(exprListCtx);
-        int props = 0;
-        props |= OpCodeProperties.ARGS;
-        if (exprListCtx.children.size() == 1) {
-            String cadena = exprListCtx.getText();
-            Simbolo sim = this.tablaSimbolos.getSimb(cadena);
-            if (sim != null) {
-                props |= OpCodeProperties.ARG_IS_LABEL;
-                byte[] jumpAddr = Codificador.codificaSalto(this.contadorPrograma, sim.getDireccion());
-                this.writeAtEndOfBuffer(jumpAddr);
-                OpCode opc;
-                if ((opc = this.opCodeReturnStack.peekFirst()) != null && Codificador.noSoportado(opc)) {
-                    this.clearOutBuf();
-                }
-            }
-        } else if (exprListCtx.children.size() == 2) {
-            props |= OpCodeProperties.ARGS_2;
-        }
-        this.opCodePropsReturnStack.push(props);
-    }
+//    @Override
+//    public void exitExpressionlist(ExpressionlistContext exprListCtx) {
+//        super.exitExpressionlist(exprListCtx);
+//        int props = 0;
+//        props |= OpCodeProperties.ARGS;
+//        if (exprListCtx.children.size() == 1) {
+//            String cadena = exprListCtx.getText();
+//            Simbolo sim = this.tablaSimbolos.getSimb(cadena);
+//            if (sim != null) {
+//                props |= OpCodeProperties.ARG_IS_LABEL;
+//                byte[] jumpAddr = Codificador.codificaSalto(this.contadorPrograma, sim.getDireccion());
+//                this.writeAtEndOfBuffer(jumpAddr);
+//                OpCode opc;
+//                if ((opc = this.opCodeReturnStack.peekFirst()) != null && Codificador.noSoportado(opc)) {
+//                    this.clearOutBuf();
+//                }
+//            }
+//        } else if (exprListCtx.children.size() == 2) {
+//            props |= OpCodeProperties.ARGS_2;
+//        }
+//        this.opCodePropsReturnStack.push(props);
+//    }
 
     @Override
     public void exitDb(DbContext ctx) {
         super.exitDb(ctx);
-        this.tokenOutFile.print(" DB ");
 
-        if(this.simboloPendiente != null){
+        if (this.simboloPendiente != null) {
             simboloPendiente.setTam(TamañoSimbolo.BYTE);
             simboloPendiente.setTipoSimbolo(TipoSimbolo.VAR);
         }
@@ -309,9 +358,8 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void exitDw(DwContext ctx) {
         super.exitDw(ctx);
-        this.tokenOutFile.print(" DW ");
 
-        if(this.simboloPendiente != null){
+        if (this.simboloPendiente != null) {
             simboloPendiente.setTam(TamañoSimbolo.WORD);
             simboloPendiente.setTipoSimbolo(TipoSimbolo.VAR);
         }
@@ -335,21 +383,17 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void exitDupdecl(DupdeclContext ctx) {
         super.exitDupdecl(ctx);
-        this.tokenOutFile.print(" DUP ");
     }
-
 
 
     @Override
     public void exitRegister_(Register_Context ctx) {
         super.exitRegister_(ctx);
-        this.tokenOutFile.print("REG");
     }
 
     @Override
     public void exitNumber(NumberContext ctx) {
         super.exitNumber(ctx);
-        this.tokenOutFile.print(" NUM ");
     }
 
     // Regresa el número contenido en literal como un entero con signo
@@ -374,7 +418,7 @@ public class Analizador8086 extends asm8086BaseListener {
         char atEnd = literal.charAt(literal.length() - 1);
         String substring = literal.substring(0, literal.length() - 1);
         int parsed;
-        byte[] bytes = { 0x00, 0x00, 0x00, 0x00 };
+        byte[] bytes = {0x00, 0x00, 0x00, 0x00};
         String pad;
         switch (atEnd) {
             case 'H':
@@ -428,8 +472,8 @@ public class Analizador8086 extends asm8086BaseListener {
          * for (byte b : bytes) {
          * sb.append(String.format("0x%02X ", b));
          * }
-         * sb.append("]");
-         * System.out.printf("val:%s, bytes:%s\n" , literal, sb.toString());
+         * sb.append"]");
+         * default_.out.printf("val:%s, bytes:%s\n" , literal, sb.toString());
          */
         if (tamañoSimbolo == TamañoSimbolo.BYTE) {
             return bytes[0] != 0x00 || bytes[1] != 0x00 || bytes[2] != 0x00;
@@ -444,15 +488,14 @@ public class Analizador8086 extends asm8086BaseListener {
     @Override
     public void exitEqu(EquContext ctx) {
         super.exitEqu(ctx);
-        this.tokenOutFile.print(" EQU ");
         String valor = ctx.expression().getText();
         int linea = ctx.getStart().getLine();
         int col = ctx.getStart().getCharPositionInLine();
         String msg;
-        if(this.simboloPendiente == null){
+        if (this.simboloPendiente == null) {
             msg = "nombre de constante faltante";
             this.errorListener.syntaxError(null, null, linea, col, msg, null);
-        }else{
+        } else {
             this.simboloPendiente.setTipoSimbolo(TipoSimbolo.CONST);
             this.simboloPendiente.setTam(TamañoSimbolo.WORD);
         }
@@ -537,10 +580,123 @@ public class Analizador8086 extends asm8086BaseListener {
             sb.append(String.format("0x%02X ", b));
         }
         sb.append("]");
-        System.out.printf("%s\n", sb.toString());
+        //System.out.printf("%s\n", sb.toString());
     }
 
     public void clearOutBuf() {
         this.bufWriteIdx = 0;
+    }
+
+    public AddressingMode getAddressingMode(ExpressionlistContext ctx) {
+        List<asm8086Parser.ExpressionContext> expressions = ctx.expression();
+        String errMsg = null;
+        int linea = ctx.getStart().getLine();
+        int col = ctx.getStart().getCharPositionInLine();
+        if (expressions.size() == 1) {
+            // Significa que NO hay una coma en la lista de argumentos
+            ExpressionContext exprCtx = expressions.get(0);
+            //List<MultiplyingExpressionContext> mpexctxList =  exprCtx.multiplyingExpression();
+            List<asm8086Parser.ArgumentContext> arguments = exprCtx.argument();
+
+            // Por lo pronto vamos a asumir que solo hay un argumento en la lista de argumentos
+            if (arguments.size() == 1) {
+                asm8086Parser.ArgumentContext argCtx = arguments.get(0);
+                Register_Context regCtx = argCtx.register_();
+                NameContext nameCtx = argCtx.name();
+                NumberContext numberCtx = argCtx.number();
+                if (regCtx != null) {
+                    // El argumento es un solo registro
+                    detectedReg1 = getRegistroFromStr(regCtx.REGISTRO().getText());
+                    return switch (detectedReg1) {
+                        case AX, BX, CX, DX, DI, BP -> AddressingMode.REG16;
+                        case AH, AL, BH, BL, CH, CL, DH, DL -> AddressingMode.REG8;
+                        default -> AddressingMode.REG16;
+                    };
+                } else if (nameCtx != null) {
+                    // El argumento es una etiqueta
+                    // Verificar que existe en la tabla
+                    Simbolo s = null;
+                    if ((s = this.tablaSimbolos.getSimb(nameCtx.getText().toLowerCase())) == null) {
+                        errMsg = String.format("no se encontró el simbolo %s", nameCtx.getText());
+                        this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
+                    } else {
+                        this.detectedMem1 = s.getDireccion();
+                    }
+                    return AddressingMode.MEM;
+
+                } else if (numberCtx != null) {
+                    // El argumento es un número, por lo tanto es inmediato
+                    return AddressingMode.INMEDIATO;
+                }
+            }
+        } else if (expressions.size() == 2) {
+            // Hay dos argumentos separados por comas
+            ExpressionContext exprCtx1 = expressions.get(0);
+            //List<MultiplyingExpressionContext> mpExpList1 = exprCtx1.multiplyingExpression();
+            //MultiplyingExpressionContext mpexpctx1 = mpExpList1.get(0);
+
+            ExpressionContext exprCtx2 = expressions.get(1);
+            //List<MultiplyingExpressionContext> mpExpList2 = exprCtx2.multiplyingExpression();
+            //MultiplyingExpressionContext mpexpctx2 = mpExpList2.get(0);
+
+            asm8086Parser.ArgumentContext argCtx1 = exprCtx1.argument().get(0);
+            asm8086Parser.ArgumentContext argCtx2 = exprCtx2.argument().get(0);
+
+            //System.out.printf("Arg1: %s, Arg2: %s\n", argCtx1.getText(), argCtx2.getText());
+
+            if (argCtx1.register_() != null) {
+                detectedReg1 = getRegistroFromStr(argCtx1.getText());
+                if (argCtx2.register_() != null) {
+                    detectedReg2 = getRegistroFromStr(argCtx2.getText());
+                    return AddressingMode.REG_REG;
+                } else if (argCtx2.number() != null) {
+                    return AddressingMode.REG_INM;
+                } else if (argCtx2.name() != null) {
+                    Simbolo s = null;
+                    if (((s = this.tablaSimbolos.getSimb(argCtx2.name().getText())) == null)) {
+                        errMsg = String.format("no se encontró el simbolo %s", argCtx2.name().getText());
+                        this.errorListener.syntaxError(null, null, linea, col, errMsg, null);
+                    }else{
+                        this.detectedMem2 = s.getDireccion();
+                        this.detectedMMMBits = MMMField.MMM100;
+                    }
+                    return AddressingMode.REG_MEM;
+                }
+            } else if (argCtx1.name() != null) {
+                if (argCtx2.register_() != null) {
+                    return AddressingMode.MEM_REG;
+                } else if (argCtx2.number() != null) {
+                    return AddressingMode.MEM_INM;
+                }
+            }
+        }
+        return AddressingMode.DESCONOCIDO;
+    }
+
+    public Registro getRegistroFromStr(String str) {
+        return switch (str.toUpperCase()) {
+            case "AX" -> Registro.AX;
+            case "AH" -> Registro.AH;
+            case "AL" -> Registro.AL;
+            case "BX" -> Registro.BX;
+            case "BH" -> Registro.BH;
+            case "BL" -> Registro.BL;
+            case "CX" -> Registro.CX;
+            case "CH" -> Registro.CH;
+            case "CL" -> Registro.CL;
+            case "DX" -> Registro.DX;
+            case "DH" -> Registro.DH;
+            case "DL" -> Registro.DL;
+            case "SI" -> Registro.SI;
+            case "DI" -> Registro.DI;
+            case "BP" -> Registro.BP;
+            case "SP" -> Registro.SP;
+            case "DS" -> Registro.DS;
+            case "CS" -> Registro.CS;
+            case "SS" -> Registro.SS;
+            case "GS" -> Registro.GS;
+            case "FS" -> Registro.FS;
+            default -> Registro.UNKNOWN;
+        };
     }
 }
