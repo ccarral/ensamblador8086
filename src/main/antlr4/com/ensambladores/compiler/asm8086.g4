@@ -162,11 +162,7 @@ label
    ;
 
 expression
-   : argument (SIGNO argument)*
-   ;
-
-multiplyingExpression
-   : argument (('*' | '/' | 'mod' | 'and') argument)*
+   : argument (signo argument)*
    ;
 
 argument
@@ -175,9 +171,7 @@ argument
    | register_
    | name
    | string_
-   | ('(' expression ')')
-   | ((number | name)? '[' expression ']')
-   | ptr expression
+   | (ptr)? '[' expression ']'
    | NOT expression
    | OFFSET expression
    | LENGTH expression
@@ -202,6 +196,10 @@ string_
 
 name
    :NOMBRE
+   ;
+
+signo
+   : SIGNO
    ;
 
 number

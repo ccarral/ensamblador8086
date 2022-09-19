@@ -91,7 +91,9 @@ public class Codificador {
         InstructionTemplate default_ = new InstructionTemplate("11111111");
         InstructionTemplate template =
                 switch (opc) {
-                    case MOV, NEG, IDIV, LES, SHL, UNKNOWN -> default_;
+                    case UNKNOWN -> default_;
+                    case SHL -> new InstructionTemplate("1101000woo100mmmdisp");
+                    case LES -> new InstructionTemplate("11000100oorrrmmm");
                     case PUSHF -> new InstructionTemplate("10011100");
                     case STOSB -> new InstructionTemplate("10101010");
                     case DAA -> new InstructionTemplate("00100111");
@@ -103,12 +105,16 @@ public class Codificador {
                         case REG16 -> new InstructionTemplate("01001rrr");
                         default -> default_;
                     };
+                    case IDIV -> new InstructionTemplate("1111011woo111mmmdisp");
+                    case NEG -> new InstructionTemplate("1111011woo011mmmdisp");
                     case POP -> switch (am) {
                         case MEM -> new InstructionTemplate("10001111oo000mmmdisp");
                         default -> default_;
                     };
+                    case MOV -> new InstructionTemplate("000011110010010011rrrmmm");
                     case XOR -> switch(am){
-                        case REG_MEM -> new InstructionTemplate("0011001woorrrmmmdisp");
+                        case REG_MEM, REG_REG, MEM_REG -> new InstructionTemplate("0011001woorrrmmmdisp");
+                        case REG_INM -> new InstructionTemplate("1000000woo110mmmdisp");
                         default -> default_;
                     };
                     case LOOPNE -> new InstructionTemplate("11100000disp");

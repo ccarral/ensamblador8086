@@ -55,13 +55,13 @@ public class TablaSimbolos {
 
     public String toString() {
         String out = null;
-        out = String.format("---------------------------------\n");
+        out = String.format("-----------------------------------\n");
         out = out.concat(String.format("%10s %5s %5s %-5s %6s\n", "simb","tipo","B/W", "dir", "#bytes"));
-        out = out.concat("---------------------------------\n");
+        out = out.concat("-----------------------------------\n");
         for (Simbolo s : this.getTablaInner()) {
             out = out.concat(String.format("%10s %5s %5s %04X %5d\n", s.getEtiqueta(), s.getTipoSimbolo(), s.getTam(), s.getDireccion(), s.getLongitud()));
         }
-        out = out.concat("---------------------------------\n");
+        out = out.concat("-----------------------------------\n");
         return out;
     }
 }

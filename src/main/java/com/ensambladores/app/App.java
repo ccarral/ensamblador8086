@@ -1,16 +1,12 @@
 package com.ensambladores.app;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.PrintStream;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Scanner;
 
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.ANTLRFileStream;
@@ -29,22 +25,30 @@ import org.apache.commons.io.FilenameUtils;
  */
 public class App {
     public static void main(String[] args) {
-        FileInputStream fileInputStream;
+        FileInputStream fileInputStream = null;
+        String fileNameArg;
         try {
             if (args.length < 1) {
-                System.err.println(ayudaStr());
-                System.exit(-1);
+                Scanner scan = new Scanner(System.in);
+                System.out.println("No se detectó un archivo.\nEscriba el nombre de un archivo para comenzar:");
+                fileNameArg = scan.nextLine();
+            }else{
+                fileNameArg = args[0];
             }
 
-            String fileNameArg = args[0];
             Path filePath = Paths.get(fileNameArg);
             String base = FilenameUtils.getBaseName(fileNameArg);
             String outFileName = base.concat(".o");
 
             PrintStream outStream = new PrintStream(outFileName);
 
+            try{
+                fileInputStream = new FileInputStream(fileNameArg);
+            } catch (FileNotFoundException e) {
+                System.out.println("No se pudo encontrar el archivo "+fileNameArg);
+                System.exit(-1);
+            }
 
-            fileInputStream = new FileInputStream(fileNameArg);
 
             List<String> lineas = Files.readAllLines(filePath);
 
@@ -70,7 +74,8 @@ public class App {
                 int tokenType = t.getType();
                 String symbol = v.getSymbolicName(tokenType);
                 String literal = t.getText();
-                if(symbol!= null && symbol.equals("EOL")){
+                if(symbol!= null && symbol.equals("EOL")
+                ){
                     System.out.println();
                 }else{
                     if(!tokensFiltrados.contains(symbol)
@@ -88,11 +93,12 @@ public class App {
 
             Analizador8086 listener = new Analizador8086();
             listener.setErrorListener(errorListener);
-            //listener.setOutFile(outStream);
-            listener.setOutFile(System.out);
+            listener.setOutFile(outStream);
+            //listener.setOutFile(System.out);
             //listener.setOutFile(System.out);
             listener.setInput(stream);
             listener.setLineas(lineas.toArray(new String[0]));
+            listener.setVocab(v);
 
             parser.addParseListener(listener);
             ParseTree tree = parser.prog();

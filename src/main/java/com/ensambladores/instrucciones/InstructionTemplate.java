@@ -37,6 +37,8 @@ public class InstructionTemplate {
 
     public String buildString(){
         String s = this.stringTemplate;
+        //System.out.println("mmm:"+ mmm.toString());
+        //System.out.println("oo:"+ooo.toString());
         s = s.replaceAll("mmm", this.mmm.toString());
         s = s.replaceAll("oo", this.ooo.toString());
         s = s.replaceAll("rrr", this.rrr.toString());
@@ -49,17 +51,18 @@ public class InstructionTemplate {
     public byte[] buildBytes(){
         byte[] buf = new byte[32];
         String bits = this.buildString();
+        //System.out.println("bits:"+bits);
         //System.out.println("bits: " + bits);
         int bitStrSize = bits.length();
         assert bitStrSize % 8 == 0;
-        for(int i=0; i<bitStrSize;i+=8){
-            String slice = bits.substring(i, i+8);
+        int byteArrLength = Math.floorDiv(bitStrSize,8);
+        for(int i=0; i<byteArrLength;i++){
+            String slice = bits.substring(i*8, (i*8)+8);
             byte b = UnsignedBytes.parseUnsignedByte(slice,2);
             //System.out.println("b:"+UnsignedBytes.toString(b,2));
             buf[i] = b;
         }
-        int writtenBytes = bitStrSize / 8;
-        return Arrays.copyOfRange(buf,0, writtenBytes);
+        return Arrays.copyOfRange(buf,0, byteArrLength);
     }
 
     public void setW(TamañoSimbolo w) {
